@@ -17,6 +17,8 @@ SET(FILES
 	src/util
 	src/lifecycle
 	src/barrier
+	src/array32
+	src/array64
 	src/task-results
 	src/pipe
 	src/lock
