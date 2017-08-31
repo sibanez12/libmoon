@@ -24,11 +24,14 @@ local SRC_IP        = "10.0.0.10"
 local DST_IP        = "10.1.0.10"
 local SRC_PORT_BASE = 1234 -- actual port will be SRC_PORT_BASE * random(NUM_FLOWS)
 local DST_PORT      = 1234
-local NUM_FLOWS     = 1000
+local NUM_FLOWS     = 10
+local TIMING_WHEEL_NUM_SLOTS = 1000
 local ACK_INTERVAL = 1e-3
 local  array32       = require "array32"
 local  array64       = require "array64"
-shared_meta_info = array32:new(4, 0)
+local timing_wheel = require"timing_wheel"
+
+shared_meta_info = array32:new(4, 3)
 
 -- the configure function is called on startup with a pre-initialized command line parser
 function configure(parser)
@@ -147,7 +150,7 @@ function dataReceiverTask(rxQ, txQ, srcMac, srcMacStr)
 	 bufs[i]:free()
       end
 
-
+      local num = #seen
       ackBufs:alloc(ACK_LEN)
       for _, buf in ipairs(ackBufs) do
 	 local pkt = buf:getTcpPacket()
@@ -164,9 +167,13 @@ function dataReceiverTask(rxQ, txQ, srcMac, srcMacStr)
 	    pkt.eth:setDst(sender_mac)
 	    pkt.tcp:setDstPort(sender_index)
 	    pkt.tcp:setAckNumber(seq_num+1)
+	 else
+	    buf:free()
 	 end
       end
-      txQ:send(ackBufs)
+      if num > 0 then
+	 txQ:sendN(ackBufs, num)
+      end
    end
 
    log:info("Logging info about received packets at dataReceiver")
@@ -184,10 +191,10 @@ end
 
 function genWorkload()
    wl = {}
-   wl["num_flows"] = 1
-   wl["dst_mac"] = {DST_MAC_1}
-   wl["size"] = {100}
-   wl["flow_id"] = {23}
+   wl["num_flows"] = 2
+   wl["dst_mac"] = {DST_MAC_1, DST_MAC_1}
+   wl["size"] = {1000000, 1000000}
+   wl["flow_id"] = {23, 28}
    return wl
 end
 
@@ -215,6 +222,7 @@ function ackReceiverTask(rxQ)
 	       sa_max_ack_num:write(ack_num, local_index)
 	    end
 	 end
+	 bufs[i]:free()
       end
    end
    local max_ack = sa_max_ack_num:read(1)
@@ -246,7 +254,7 @@ function dataSenderTask(queue, srcMac, srcMacStr, wl)
    -- initialize all the flows to start at the same time
    -- so alloc resources on the shared_xx arrays (common_index)
    -- and on the timing wheel
-
+   local tw = timing_wheel:new(TIMING_WHEEL_NUM_SLOTS)
    -- should I check ACKs also in this loop? no
 
    -- dstMac, dstMacStr)
@@ -264,10 +272,10 @@ function dataSenderTask(queue, srcMac, srcMacStr, wl)
       flow_index[flow_id] = flow_num+1 -- TODO: check this index is available in shared_arrays
       flow_size[flow_id] = wl.size[flow_num+1]
       flow_num = flow_num + 1
-      -- also put first packet on timing wheel
+      -- also put first packet on timing wheel flow_num slots into the future
+      tw:insert(flow_id, flow_num)
    end
    log:info("dataSender about to start %d flows", num_active_flows)
-   local flow_id = wl.flow_id[1]
 
    while lm.running() and num_active_flows > 0 do 
       -- check if Ctrl+c was pressed
@@ -291,20 +299,28 @@ function dataSenderTask(queue, srcMac, srcMacStr, wl)
 	 -- TODO: maybe wheel as an array in C
 	 -- or even array of lists?
 	 local pkt = buf:getTcpPacket()
+	 local flow_id = tw:remove_and_tick()	 
 	 local index = flow_index[flow_id]
 	 local seq_num = next_seq_num[flow_id]
 	 local size = flow_size[flow_id]
 	 local dst_mac = flow_dst_mac[flow_id]
-	 if seq_num < size then
+	 if flow_id > 0 and seq_num < size then
+	    
 	    pkt.eth:setDst(dst_mac) -- routing
 	    pkt.tcp:setSrcPort(flow_id) -- identifier
 	    pkt.tcp:setDstPort(index) -- random info
 	    pkt.tcp:setSeqNumber(seq_num)
 	    pkt.tcp:setAckNumber(0)
 	    next_seq_num[flow_id] = seq_num + 1
-	    if seq_num == size then
+	    if seq_num + 1 == size then
 	       num_active_flows = num_active_flows - 1		 	      
+	    else
+	       local gap = shared_meta_info:read(index)
+	       tw:insert(flow_id, gap)
 	    end
+	 else
+	    pkt.eth:setDst(srcMac)
+	    pkt.eth:setSrc(srcMac)
 	    -- 	-- otherwise packet is dropped
 	 end
       end
@@ -313,5 +329,16 @@ function dataSenderTask(queue, srcMac, srcMacStr, wl)
       -- old bufs that have been sent
       queue:send(bufs)
    end
+
+   log:info("Logging info about sent at dataSender")
+   for flow_id, index in pairs(flow_index) do
+      local dst = flow_dst_mac[flow_id]
+      local seq_num = next_seq_num[flow_id]
+      local size = flow_size[flow_id]
+      
+      log:info("local index %s: flow_id %s dst %s next_seq_num %s  size %s",
+	       index, flow_id, dst, seq_num, size)
+   end
+
 end
 
