@@ -19,6 +19,7 @@ SET(FILES
 	src/barrier
 	src/array32
 	src/array64
+	src/timing_wheel
 	src/task-results
 	src/pipe
 	src/lock
