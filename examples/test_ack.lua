@@ -6,6 +6,8 @@ local log    = require "log"
 local memory = require "memory"
 local arp    = require "proto.arp"
 local timer  = require "timer"
+local filter = require "filter"
+local eth = require "proto.ethernet"
 
 -- set addresses here
 local DST_MAC_0       = 8869393797384 --  "08:11:11:11:11:08"
@@ -17,6 +19,9 @@ local DST_MAC_0_STR       =   "08:11:11:11:11:08"
 local DST_MAC_1_STR       =   "08:22:22:22:22:08"
 local DST_MAC_2_STR       =   "08:33:33:33:33:08"
 local DST_MAC_3_STR       =   "08:44:44:44:44:08"
+
+local IP32_MASK_STR = "255.255.255.255" --4294967295
+local ACK_CODE = "10.2.2.10"
 
 local PKT_LEN       = 1460 --60
 local ACK_LEN = 60
@@ -44,8 +49,8 @@ function master(args,...)
    for i, dev in ipairs(args.dev) do
       local dev = device.config{
 	 port = dev,
-	 txQueues = 1,
-	 rxQueues = 1
+	 txQueues = 3,
+	 rxQueues = 3
       }
       args.dev[i] = dev
    end
@@ -58,23 +63,52 @@ function master(args,...)
    -- print statistics
    stats.startStatsTask{devices = args.dev}
 
-   wl = genWorkload()
 
-   lm.startTask("interactiveSlave")
+
+   local dataQ = 0
+   local controlQ = 1
+   local ackQ = 2
+
+
    -- configure tx rates and start transmit slaves
    for i, dev in ipairs(args.dev) do 
       if (i == 1) then
-	 local queue = dev:getTxQueue(0)	 
-	 lm.startTask("dataSenderTask", queue, DST_MAC_0, DST_MAC_0_STR, wl)
-	 local rxQueue = dev:getRxQueue(0)
-	 lm.startTask("ackReceiverTask", rxQueue)
+	 local wl = genWorkload()
+
+   	 local dataTxQueue = dev:getTxQueue(dataQ)	 
+   	 lm.startTask("dataSenderTask", dataTxQueue, DST_MAC_0, DST_MAC_0_STR, wl)
+
+	 local ackRxQueue = dev:getRxQueue(ackQ)
+	 local af= dev:fiveTupleFilter({dstIp=ACK_CODE,
+					dstIpMask=IP32_MASK_STR}, ackRxQueue)
+
+   	 lm.startTask("ackReceiverTask", ackRxQueue)
+
+   	 local ackTxQueue = dev:getTxQueue(ackQ)
+   	 local dataRxQueue = dev:getRxQueue(dataQ)
+   	 lm.startTask("dataReceiverTask", dataRxQueue, ackTxQueue,
+   		      DST_MAC_0, DST_MAC_0_STR)
+
       end
 
       if (i == 2) then
-	 local txQ = dev:getTxQueue(0)
-	 local rxQ = dev:getRxQueue(0)
-	 lm.startTask("dataReceiverTask", rxQ, txQ, DST_MAC_1, DST_MAC_1_STR)
+	 local wl = genWorkload1()
+
+   	 local dataTxQueue = dev:getTxQueue(dataQ)	 
+   	 lm.startTask("dataSenderTask", dataTxQueue, DST_MAC_1, DST_MAC_1_STR, wl)
+
+	 local ackRxQueue = dev:getRxQueue(ackQ)
+	 local af= dev:fiveTupleFilter({dstIp=ACK_CODE,
+					dstIpMask=UINT32_MASK_STR}, ackRxQueue)
+
+   	 lm.startTask("ackReceiverTask", ackRxQueue)
+
+   	 local ackTxQueue = dev:getTxQueue(ackQ)
+   	 local dataRxQueue = dev:getRxQueue(dataQ)
+   	 lm.startTask("dataReceiverTask", dataRxQueue, ackTxQueue,
+   		      DST_MAC_1, DST_MAC_1_STR)
       end
+
 
    end
    lm.waitForTasks()
@@ -104,7 +138,7 @@ function dataReceiverTask(rxQ, txQ, srcMac, srcMacStr)
 	    ethSrc = srcMac, --queue, -- MAC of the tx device
 	    ethDst = srcMac,
 	    ip4Src = SRC_IP,
-	    ip4Dst = DST_IP,
+	    ip4Dst = ACK_CODE,
 	    tcpSrc = SRC_PORT,
 	    tcpDst = DST_PORT,
 	    pktLength = ACK_LEN,
@@ -176,7 +210,7 @@ function dataReceiverTask(rxQ, txQ, srcMac, srcMacStr)
       end
    end
 
-   log:info("Logging info about received packets at dataReceiver")
+   log:info("Logging info about received packets at dataReceiver at dev " .. txQ.dev.id)
    for flow_id, index in pairs(flow_index) do
       local src = arr_mac:read(index)
       local seq_num = arr_max_seq_num:read(index)
@@ -184,7 +218,6 @@ function dataReceiverTask(rxQ, txQ, srcMac, srcMacStr)
       local sender_index = arr_sender_index:read(index)
       log:info("local index %s: flow_id %s src %s max_seq_num %s  sender_index %s",
 	       index, flow_id, src, seq_num, sender_index)
-      log:info("Max I acked was %s", max_I_acked)
    end
 
 end
@@ -198,6 +231,15 @@ function genWorkload()
    return wl
 end
 
+function genWorkload1()
+   wl = {}
+   wl["num_flows"] = 2
+   wl["dst_mac"] = {DST_MAC_0, DST_MAC_0}
+   wl["size"] = {1000000, 1000000}
+   wl["flow_id"] = {33, 38}
+   return wl
+end
+
 local sa_free = array32:new(1,0)
 local sa_max_ack_num = array32:new(NUM_FLOWS, 0)
 
@@ -208,6 +250,8 @@ function ackReceiverTask(rxQ)
    local bufs = memory.bufArray()
    -- pkt has flowId and common index number !?
    -- so we can index directly into share state
+   
+   local flow_index = {}
    while lm.running() do
       local rx = rxQ:tryRecv(bufs, 1000)
       for i = 1, rx do
@@ -216,8 +260,12 @@ function ackReceiverTask(rxQ)
 	 local flow_id = pkt.tcp:getSrcPort()
 	 local local_index = pkt.tcp:getDstPort()
 	 local ack_num = pkt.tcp:getAckNumber() -- next expected sequence number
+	 
 	 if local_index < NUM_FLOWS then
 	    local tmp = sa_max_ack_num:read(local_index)
+	    if tmp == 0 then
+	       flow_index[flow_id] = local_index
+	    end
 	    if tmp < ack_num then
 	       sa_max_ack_num:write(ack_num, local_index)
 	    end
@@ -225,8 +273,12 @@ function ackReceiverTask(rxQ)
 	 bufs[i]:free()
       end
    end
-   local max_ack = sa_max_ack_num:read(1)
-   log:info("Max acked seq no at sender is %d", max_ack)
+   log:info("Logging max acked seq no at ackReceiver at dev " .. rxQ.dev.id)
+   for flow_id, index in pairs(flow_index) do
+      local max_ack = sa_max_ack_num:read(index)
+      log:info("local index %s: flow_id %s max_ack_num %s",
+	       index, flow_id, max_ack)
+   end
 end
 
 function dataSenderTask(queue, srcMac, srcMacStr, wl)
@@ -330,12 +382,11 @@ function dataSenderTask(queue, srcMac, srcMacStr, wl)
       queue:send(bufs)
    end
 
-   log:info("Logging info about sent at dataSender")
+   log:info("Logging info about sent at dataSender at dev " .. queue.dev.id)
    for flow_id, index in pairs(flow_index) do
       local dst = flow_dst_mac[flow_id]
       local seq_num = next_seq_num[flow_id]
-      local size = flow_size[flow_id]
-      
+      local size = flow_size[flow_id]      
       log:info("local index %s: flow_id %s dst %s next_seq_num %s  size %s",
 	       index, flow_id, dst, seq_num, size)
    end
