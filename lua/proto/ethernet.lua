@@ -42,6 +42,11 @@ eth.TYPE_8021Q = 0x8100
 --- EtherType for LACP (Actually, 'Slow Protocols')
 eth.TYPE_LACP = 0x8809
 
+-- EtherType for Perc control
+eth.TYPE_PERC = 0x1234
+eth.TYPE_PERC_ACK = 0x3456
+eth.TYPE_PERC_DATA = 0x4567
+
 --- Special addresses
 --- Ethernet broadcast address
 eth.BROADCAST	= "ff:ff:ff:ff:ff:ff"
@@ -313,6 +318,12 @@ function etherHeader:getTypeString()
 		cleartext = "(LACP)"
 	elseif type == eth.TYPE_8021Q then
 		cleartext = "(VLAN)"
+	elseif type == eth.TYPE_PERC then
+		cleartext = "(PERC CONTROL)"		
+	elseif type == eth.TYPE_PERC_DATA then
+		cleartext = "(PERC DATA)"		
+	elseif type == eth.TYPE_PERC_ACK then
+		cleartext = "(PERC ACK)"		
 	else
 		cleartext = "(unknown)"
 	end
@@ -435,6 +446,9 @@ local mapNameType = {
 	arp = eth.TYPE_ARP,
 	ptp = eth.TYPE_PTP, 
 	lacp = eth.TYPE_LACP,
+	percc = eth.TYPE_PERC,
+	perca = eth.TYPE_PERC_ACK,
+	percd = eth.TYPE_PERC_DATA,
 }
 
 --- Resolve which header comes after this one (in a packet).

@@ -908,6 +908,10 @@ pkt.getTcpPacket = function(self, ip4)
 	end 
 end   
 
+pkt.getPerccPacket = createStack("eth", "percc")
+pkt.getPercdPacket = createStack("eth","percd")
+pkt.getPercaPacket = createStack("eth","perca")
+
 pkt.getPtpPacket = createStack("eth", "ptp")
 pkt.getUdpPtpPacket = createStack("eth", "ip4", "udp", "ptp")
 

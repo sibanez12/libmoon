@@ -6,7 +6,6 @@ local log    = require "log"
 local memory = require "memory"
 local arp    = require "proto.arp"
 local percc    = require "proto.percc"
-local percg    = require "proto.percg"
 local pcap   = require "pcap"
 
 -- set addresses here
@@ -76,8 +75,8 @@ function txSlave(queue, dstMac, filename, snaplen)
 			-- fields not explicitly set here are initialized to reasonable defaults
 			ethSrc = nf_mac_map.nf0, -- MAC of the tx device
 			ethDst = nf_mac_map.nf1,
-			percgflowID = 0x1,
-			percgisControl = percg.PROTO_PERCC,
+			perccflowID = 0x1,
+			perccisControl = percc.PROTO_PERCC,
 			perccleave = 0,
 			perccisForward = 1,
 			percchopCnt = 0,

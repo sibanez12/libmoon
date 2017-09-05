@@ -21,19 +21,23 @@ local ffi = require "ffi"
 require "proto.template"
 local initHeader = initHeader
 local bswap = bswap
-
+local ntoh16, hton16 = ntoh16, hton16
 ---------------------------------------------------------------------------
 ---- percd constants 
 ---------------------------------------------------------------------------
 
 --- percd protocol constants
 local percd = {}
+percd.PROTO_PERCC = 0x1
+percd.PROTO_PERCD = 0x0
 
 ---------------------------------------------------------------------------
 ---- percd header
 ---------------------------------------------------------------------------
 
 percd.headerFormat = [[
+	uint32_t	flowID;
+        uint8_t         isControl;
 	uint32_t		index;
         uint32_t                seqNo;
         uint32_t                ackNo;
@@ -54,6 +58,54 @@ local mapNameProto = {
 --[[ for all members of the header with non-standard data type: set, get, getString 
 -- for set also specify a suitable default value
 --]]
+
+--- Set the flowID.
+--- @param int flowID of the perc header as 32 bit integer.
+function percdHeader:setflowID(int)
+	int = int or 0
+	self.flowID = bswap(int)
+end
+
+--- Retrieve the flowID.
+--- @return flowID as 32 bit integer.
+function percdHeader:getflowID()
+	return bswap(self.flowID)
+end
+
+--- Retrieve the flowID as string.
+--- @return flowID as string.
+function percdHeader:getflowIDString()
+	return self.flowID
+end
+
+--- Set the isControl.
+--- @param int isControl of the percd header as 8 bit integer.
+function percdHeader:setisControl(int)
+	int = int or percd.PROTO_PERCC
+	self.isControl = int
+end
+
+--- Retrieve the isControl.
+--- @return isControl as 8 bit integer.
+function percdHeader:getisControl()
+	return self.isControl
+end
+
+--- Retrieve the isControl as string.
+--- @return isControl as string.
+function percdHeader:getisControlString()
+   local proto = self:getisControl()
+   local cleartext = ""
+   if proto == percd.PROTO_PERCC then
+      cleartext = "(PERC CONTROL)"
+   elseif proto == percd.PROTO_PERCD then
+      cleartext = "(PERC DATA)"
+   else
+      cleartext = "(unknown)"
+   end
+
+   return format("0x%02x %s", proto, cleartext)
+end
 
 --- Set the seqNo.
 --- @param int seqNo of the percd header as 32 bit integer.
@@ -112,6 +164,26 @@ function percdHeader:getindexString()
 	return bswap(self.index)
 end
 
+--- Set the seq.
+--- @param int seq of the percd header as 16 bit integer.
+function percdHeader:setseq(int)
+	int = int or 0
+	self.seq = hton16(int)
+end
+
+--- Retrieve the seq.
+--- @return seq as 16 bit integer.
+function percdHeader:getseq()
+	return hton16(self.seq)
+end
+
+--- Retrieve the seq as string.
+--- @return seq as string.
+function percdHeader:getseqString()
+	return hton16(self.seq)
+end
+
+
 --- Set all members of the percd header.
 --- Per default, all members are set to default values specified in the respective set function.
 --- Optional named arguments can be used to set a member to a user-provided value.
@@ -124,11 +196,11 @@ end
 function percdHeader:fill(args, pre)
 	args = args or {}
 	pre = pre or "percd"
-
+	self:setflowID(args[pre .. "flowID"])
+	self:setisControl(args[pre .. "isControl"])
 	self:setseqNo(args[pre .. "seqNo"])
 	self:setackNo(args[pre .. "ackNo"])
 	self:setindex(args[pre .. "index"])
-
 end
 
 --- Retrieve the values of all members.
@@ -139,17 +211,23 @@ function percdHeader:get(pre)
 	pre = pre or "percd"
 
 	local args = {}
+	args[pre .. "flowID"] = self:getflowID() 
+	args[pre .. "isControl"] = self:getisControl() 
 	args[pre .. "seqNo"] = self:getseqNo() 
 	args[pre .. "ackNo"] = self:getackNo() 
 	args[pre .. "index"] = self:getindex() 
-
 	return args
 end
 
 --- Retrieve the values of all members.
 --- @return Values in string format.
 function percdHeader:getString()
-	return "Perc_data index " .. self:getindex() .. " seqNo " .. self:getseqNo() .. " ackNo " .. self:getAckNo()
+	return "Perc_data "
+	   .. " flowID " .. self:getflowID()
+	   .. " isControl " .. self:getisControlString()
+	   .. " index " .. self:getindex() 
+	   .. " seqNo " .. self:getseqNo()
+	   .. " ackNo " .. self:getAckNo()
 end
 
 --- Resolve which header comes after this one (in a packet)

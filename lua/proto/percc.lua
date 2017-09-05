@@ -31,12 +31,16 @@ percc.LABEL_INACTIVE = 0x0
 percc.LABEL_SAT = 0x1
 percc.LABEL_UNSAT = 0x2
 percc.LABEL_NEW_FLOW = 0x3
+percc.PROTO_PERCC = 0x1
+percc.PROTO_PERCD = 0x0
 
 ---------------------------------------------------------------------------
 ---- percc header
 ---------------------------------------------------------------------------
 
 percc.headerFormat = [[
+	uint32_t	flowID;
+        uint8_t         isControl;
 	uint8_t		leave;
         uint8_t         isForward;
         uint8_t         hopCnt;
@@ -73,6 +77,54 @@ local mapNameProto = {
 --[[ for all members of the header with non-standard data type: set, get, getString 
 -- for set also specify a suitable default value
 --]]
+
+--- Set the flowID.
+--- @param int flowID of the perc header as 32 bit integer.
+function perccHeader:setflowID(int)
+	int = int or 0
+	self.flowID = bswap(int)
+end
+
+--- Retrieve the flowID.
+--- @return flowID as 32 bit integer.
+function perccHeader:getflowID()
+	return bswap(self.flowID)
+end
+
+--- Retrieve the flowID as string.
+--- @return flowID as string.
+function perccHeader:getflowIDString()
+	return self.flowID
+end
+
+--- Set the isControl.
+--- @param int isControl of the percc header as 8 bit integer.
+function perccHeader:setisControl(int)
+	int = int or percc.PROTO_PERCC
+	self.isControl = int
+end
+
+--- Retrieve the isControl.
+--- @return isControl as 8 bit integer.
+function perccHeader:getisControl()
+	return self.isControl
+end
+
+--- Retrieve the isControl as string.
+--- @return isControl as string.
+function perccHeader:getisControlString()
+   local proto = self:getisControl()
+   local cleartext = ""
+   if proto == percc.PROTO_PERCC then
+      cleartext = "(PERC CONTROL)"
+   elseif proto == percc.PROTO_PERCD then
+      cleartext = "(PERC DATA)"
+   else
+      cleartext = "(unknown)"
+   end
+
+   return format("0x%02x %s", proto, cleartext)
+end
 
 --- Set the leave.
 --- @param int leave of the percc header as 8 bit integer.
@@ -499,6 +551,8 @@ end
 function perccHeader:fill(args, pre)
 	args = args or {}
 	pre = pre or "percc"
+	self:setflowID(args[pre .. "flowID"])
+	self:setisControl(args[pre .. "isControl"])
 	self:setleave(args[pre .. "leave"])
 	self:setisForward(args[pre .. "isForward"])
 	self:sethopCnt(args[pre .. "hopCnt"])
@@ -528,6 +582,8 @@ function perccHeader:get(pre)
 	pre = pre or "percc"
 
 	local args = {}
+	args[pre .. "flowID"] = self:getflowID() 
+	args[pre .. "isControl"] = self:getisControl() 
 	args[pre .. "leave"] = self:getleave() 
 	args[pre .. "isForward"] = self:getisForward() 
 	args[pre .. "hopCnt"] = self:gethopCnt() 
@@ -553,7 +609,10 @@ end
 --- Retrieve the values of all members.
 --- @return Values in string format.
 function perccHeader:getString()
-	return "Perc_control leave " .. self:getleaveString() 
+	return "Perc_control "
+	   .. " flowID " .. self:getflowID()
+	   .. " isControl " .. self:getisControlString()
+	   .. " leave " .. self:getleaveString() 
 	   .. " isForward " .. self:getisForward()
 	   .. " hopCnt " .. self:gethopCnt()
 	   .. " bottleneck_id " .. self:getbottleneck_id()
