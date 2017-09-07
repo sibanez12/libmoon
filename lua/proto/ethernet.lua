@@ -44,8 +44,8 @@ eth.TYPE_LACP = 0x8809
 
 -- EtherType for Perc control
 eth.TYPE_PERC = 0x1234
-eth.TYPE_PERC_ACK = 0x3456
-eth.TYPE_PERC_DATA = 0x4567
+eth.TYPE_PERC_ACK = 0x1212
+eth.TYPE_PERC_DATA = 0x1213
 
 --- Special addresses
 --- Ethernet broadcast address

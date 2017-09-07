@@ -37,7 +37,6 @@ perca.PROTO_PERCD = 0x0
 
 perca.headerFormat = [[
 	uint32_t	flowID;
-        uint8_t         isControl;
 	uint32_t	index;
         uint32_t        seqNo;
         uint32_t        ackNo;
@@ -78,34 +77,6 @@ function percaHeader:getflowIDString()
 	return self.flowID
 end
 
---- Set the isControl.
---- @param int isControl of the perca header as 8 bit integer.
-function percaHeader:setisControl(int)
-	int = int or perca.PROTO_PERCD
-	self.isControl = int
-end
-
---- Retrieve the isControl.
---- @return isControl as 8 bit integer.
-function percaHeader:getisControl()
-	return self.isControl
-end
-
---- Retrieve the isControl as string.
---- @return isControl as string.
-function percaHeader:getisControlString()
-   local proto = self:getisControl()
-   local cleartext = ""
-   if proto == perca.PROTO_PERCC then
-      cleartext = "(PERC CONTROL)"
-   elseif proto == perca.PROTO_PERCD then
-      cleartext = "(PERC DATA)"
-   else
-      cleartext = "(unknown)"
-   end
-
-   return format("0x%02x %s", proto, cleartext)
-end
 
 --- Set the seqNo.
 --- @param int seqNo of the perca header as 32 bit integer.
@@ -197,7 +168,6 @@ function percaHeader:fill(args, pre)
 	args = args or {}
 	pre = pre or "perca"
 	self:setflowID(args[pre .. "flowID"])
-	self:setisControl(args[pre .. "isControl"])
 	self:setseqNo(args[pre .. "seqNo"])
 	self:setackNo(args[pre .. "ackNo"])
 	self:setindex(args[pre .. "index"])
@@ -213,7 +183,6 @@ function percaHeader:get(pre)
 
 	local args = {}
 	args[pre .. "flowID"] = self:getflowID() 
-	args[pre .. "isControl"] = self:getisControl() 
 	args[pre .. "seqNo"] = self:getseqNo() 
 	args[pre .. "ackNo"] = self:getackNo() 
 	args[pre .. "index"] = self:getindex() 
@@ -225,7 +194,6 @@ end
 function percaHeader:getString()
 	return "Perc_data "
 	   .. " flowID " .. self:getflowID()
-	   .. " isControl " .. self:getisControlString()
 	   .. " index " .. self:getindex() 
 	   .. " seqNo " .. self:getseqNo()
 	   .. " ackNo " .. self:getAckNo()

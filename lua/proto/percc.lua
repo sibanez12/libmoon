@@ -31,8 +31,6 @@ percc.LABEL_INACTIVE = 0x0
 percc.LABEL_SAT = 0x1
 percc.LABEL_UNSAT = 0x2
 percc.LABEL_NEW_FLOW = 0x3
-percc.PROTO_PERCC = 0x1
-percc.PROTO_PERCD = 0x0
 
 ---------------------------------------------------------------------------
 ---- percc header
@@ -40,7 +38,6 @@ percc.PROTO_PERCD = 0x0
 
 percc.headerFormat = [[
 	uint32_t	flowID;
-        uint8_t         isControl;
 	uint8_t		leave;
         uint8_t         isForward;
         uint8_t         hopCnt;
@@ -60,6 +57,7 @@ percc.headerFormat = [[
         uint32_t        numSatAdj;
         uint32_t        newMaxSat;
         uint32_t        R;
+        uint32_t        index;
 ]]
 
 --- Variable sized member
@@ -95,35 +93,6 @@ end
 --- @return flowID as string.
 function perccHeader:getflowIDString()
 	return self.flowID
-end
-
---- Set the isControl.
---- @param int isControl of the percc header as 8 bit integer.
-function perccHeader:setisControl(int)
-	int = int or percc.PROTO_PERCC
-	self.isControl = int
-end
-
---- Retrieve the isControl.
---- @return isControl as 8 bit integer.
-function perccHeader:getisControl()
-	return self.isControl
-end
-
---- Retrieve the isControl as string.
---- @return isControl as string.
-function perccHeader:getisControlString()
-   local proto = self:getisControl()
-   local cleartext = ""
-   if proto == percc.PROTO_PERCC then
-      cleartext = "(PERC CONTROL)"
-   elseif proto == percc.PROTO_PERCD then
-      cleartext = "(PERC DATA)"
-   else
-      cleartext = "(unknown)"
-   end
-
-   return format("0x%02x %s", proto, cleartext)
 end
 
 --- Set the leave.
@@ -207,19 +176,19 @@ end
 --- @param int demand of the percc header as 32 bit integer.
 function perccHeader:setdemand(int)
 	int = int or 0xFFFFFFFF
-	self.demand = int
+	self.demand = bswap(int)
 end
 
 --- Retrieve the demand.
 --- @return demand as 32 bit integer.
 function perccHeader:getdemand()
-	return self.demand
+	return bswap(self.demand)
 end
 
 --- Retrieve the demand as string.
 --- @return demand as string.
 function perccHeader:getdemandString()
-	return self.demand
+	return bswap(self.demand)
 end
 
 --- Set the insert_debug.
@@ -245,19 +214,19 @@ end
 --- @param int timestamp of the percc header as 64 bit integer.
 function perccHeader:settimestamp(int)
 	int = int or 0
-	self.timestamp = int
+	self.timestamp = bswap(int)
 end
 
 --- Retrieve the timestamp.
 --- @return timestamp as 64 bit integer.
 function perccHeader:gettimestamp()
-	return self.timestamp
+	return bswap(self.timestamp)
 end
 
 --- Retrieve the timestamp as string.
 --- @return timestamp as string.
 function perccHeader:gettimestampString()
-	return self.timestamp
+	return bswap(self.timestamp)
 end
 
 --- Set the label_0.
@@ -538,6 +507,25 @@ function perccHeader:getRString()
 	return self.R
 end
 
+--- Set the index.
+--- @param int index of the percc header as 32 bit integer.
+function perccHeader:setindex(int)
+	int = int or 0
+	self.index = bswap(int)
+end
+
+--- Retrieve the index.
+--- @return index as 32 bit integer.
+function perccHeader:getindex()
+	return bswap(self.index)
+end
+
+--- Retrieve the index as string.
+--- @return index as string.
+function perccHeader:getindexString()
+	return bswap(self.index)
+end
+
 
 --- Set all members of the percc header.
 --- Per default, all members are set to default values specified in the respective set function.
@@ -552,7 +540,6 @@ function perccHeader:fill(args, pre)
 	args = args or {}
 	pre = pre or "percc"
 	self:setflowID(args[pre .. "flowID"])
-	self:setisControl(args[pre .. "isControl"])
 	self:setleave(args[pre .. "leave"])
 	self:setisForward(args[pre .. "isForward"])
 	self:sethopCnt(args[pre .. "hopCnt"])
@@ -572,6 +559,7 @@ function perccHeader:fill(args, pre)
 	self:setnumSatAdj(args[pre .. "numSatAdj"])
 	self:setnewMaxSat(args[pre .. "newMaxSat"])
 	self:setR(args[pre .. "R"])
+	self:setindex(args[pre .. "index"])
 end
 
 --- Retrieve the values of all members.
@@ -583,7 +571,6 @@ function perccHeader:get(pre)
 
 	local args = {}
 	args[pre .. "flowID"] = self:getflowID() 
-	args[pre .. "isControl"] = self:getisControl() 
 	args[pre .. "leave"] = self:getleave() 
 	args[pre .. "isForward"] = self:getisForward() 
 	args[pre .. "hopCnt"] = self:gethopCnt() 
@@ -603,6 +590,7 @@ function perccHeader:get(pre)
 	args[pre .. "numSatAdj"] = self:getnumSatAdj()
 	args[pre .. "newMaxSat"] = self:getnewMaxSat() 
 	args[pre .. "R"] = self:getR() 
+	args[pre .. "index"] = self:getindex() 
 	return args
 end
 
@@ -611,7 +599,7 @@ end
 function perccHeader:getString()
 	return "Perc_control "
 	   .. " flowID " .. self:getflowID()
-	   .. " isControl " .. self:getisControlString()
+	   .. " index " .. self:getindex() 
 	   .. " leave " .. self:getleaveString() 
 	   .. " isForward " .. self:getisForward()
 	   .. " hopCnt " .. self:gethopCnt()
