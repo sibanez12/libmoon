@@ -3,7 +3,7 @@
 
 struct timing_wheel{
   unsigned int current_slot;
-  unsigned int arr[100];
+  unsigned int arr[1000];
   std::size_t n;
 
 };
@@ -11,7 +11,7 @@ struct timing_wheel{
 extern "C" {
   struct timing_wheel* make_timing_wheel(std::size_t n){
         struct timing_wheel *a = new timing_wheel;
-	if (n < 100) a->n = n; else a->n = 100;
+	if (n < 1000) a->n = n; else a->n = 1000;
 	for (unsigned i = 0; i < a->n; i++)
 	  a->arr[i] = 0;
 	a->current_slot = 0;
@@ -30,7 +30,7 @@ extern "C" {
 
     unsigned int tmp = ((a->current_slot + i)%(a->n));
     while (a->arr[tmp] and adjusted < a->n) {
-      tmp = (a->current_slot + i)%(a->n);
+      tmp = (tmp + 1)%(a->n);
       adjusted++;
     }
 
