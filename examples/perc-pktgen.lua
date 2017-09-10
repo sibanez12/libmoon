@@ -73,8 +73,8 @@ function txSlave(queue, dstMac, filename, snaplen)
 	local mempool = memory.createMemPool(function(buf)
 		buf:getPerccPacket():fill{
 			-- fields not explicitly set here are initialized to reasonable defaults
-			ethSrc = nf_mac_map.nf0, -- MAC of the tx device
-			ethDst = nf_mac_map.nf1,
+			ethSrc = nf_mac_map.nf1, -- MAC of the tx device
+			ethDst = nf_mac_map.nf0, -- nf1
 			perccflowID = 0x1,
 			perccisControl = percc.PROTO_PERCC,
 			perccleave = 0,
