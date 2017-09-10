@@ -12,7 +12,8 @@ local eth = require "proto.ethernet"
 local perca = require "proto.perca"
 local percc = require "proto.percc"
 local percd = require "proto.percd"
-local barrier    = require "barrier"
+local barrier = require "barrier"
+local pcap   = require "pcap"
 
 local nf_macno_map = {}
 nf_macno_map["nf0"] = 8869393797384 -- "08:11:11:11:11:08"
@@ -24,8 +25,8 @@ nf_macno_map["nf3"] = 9089296122888 -- "08:44:44:44:44:08"
 -- percd: ether/ 5B Perc Generic/ 12B Perc Data
 -- perc: ether/ 5B Generic/ 56B Perc Control
 
-local PKT_LEN       = 1460 --60
-local ACK_LEN = 60
+local PKT_LEN   = 1460 --60
+local ACK_LEN   = 60
 --local CONTROL_PACKET_LEN = 78 
 
 local DATA_BATCH_SIZE = 63
@@ -56,22 +57,34 @@ function configure(parser)
     parser:option("-t --time", "The amount of time for which to send pkts for the flows (sec)"):args(1):convert(tonumber):default(0.01)
     parser:option("-o --offset", "The offset to use to compute flowID values (must be greater than 0)"):args(1):convert(tonumber):default(1)
     parser:option("-w --wait", "Wait this many seconds before sending init ctrl pkts"):args(1):convert(tonumber):default(3)
+    parser:option("-f --file", "File to write logged packets into."):default("log.pcap")
+    parser:option("-l --snap-len", "Truncate packets to this size."):convert(tonumber):target("snapLen"):default(2048)
+    parser:option("-c --cores", "Number of threads to use for logging / writing pcap traces.."):convert(tonumber):default(1)
     return parser:parse()
 end
 
 function master(args,...)
     for i, dev in ipairs(args.dev) do
-       local dev = device.config{
-          port = dev,
-          txQueues = 4,
-          rxQueues = 3
-       }
-       args.dev[i] = dev
+       local dvc
+       if i == 1 then
+           -- runs the perc application
+           dvc = device.config{
+               port = dev,
+               txQueues = 4,
+               rxQueues = 3
+           }
+       else
+           -- used for logging pkts
+           dvc = device.config{
+                     port = dev,
+                     txQueues = 1,
+                     rxQueues = args.cores,
+                     rssQueues = args.cores 
+           }
+       end
+       args.dev[i] = dvc
     end
-
     device.waitForLinks()
-    log:info("Dev 0 mac: %x", nf_macno_map.nf1)
-    log:info("Dev 1 mac: %x", nf_macno_map.nf0)
 
     -- print statistics
     stats.startStatsTask{devices = args.dev}
@@ -80,33 +93,32 @@ function master(args,...)
     local controlQ = 1
     local ackQ = 2
 
-    local b2 = barrier:new(2)
     -- configure tx rates and start transmit slaves
     for i, dev in ipairs(args.dev) do
-          local wl = perc.genWorkload(args.dstMac, args.srcMac, args.numFlows, args.time, args.offset, args.wait)
-          if (i == 2) then
-             wl = perc.genEmptyWorkload()
-          end
-          local dataTxQueue = dev:getTxQueue(dataQ)	 
-          dataTxQueue:setRate(8000)
-
-          local ackRxQueue = dev:getRxQueue(ackQ)
-          local af = dev:l2Filter(eth.TYPE_PERC_ACK, ackRxQueue)
-          local controlRxQueue = dev:getRxQueue(controlQ)
-          local cf = dev:l2Filter(eth.TYPE_PERC, controlRxQueue)
-          local controlTxQueue = dev:getTxQueue(controlQ)
-          local controlTxQueueExtra = dev:getTxQueue(3)
-          controlTxQueue:setRate(1000)
-
-          lm.startTask("dataSenderTask", wl, dataTxQueue,
-         	      ackRxQueue, controlTxQueue, controlRxQueue, controlTxQueueExtra, b2)
+        if i == 1 then
+            local wl = perc.genWorkload(args.dstMac, args.srcMac, args.numFlows, args.time, args.offset, args.wait)
+            local dataTxQueue = dev:getTxQueue(dataQ)	 
+            dataTxQueue:setRate(8000)
+            local ackRxQueue = dev:getRxQueue(ackQ)
+            local af = dev:l2Filter(eth.TYPE_PERC_ACK, ackRxQueue)
+            local controlRxQueue = dev:getRxQueue(controlQ)
+            local cf = dev:l2Filter(eth.TYPE_PERC, controlRxQueue)
+            local controlTxQueue = dev:getTxQueue(controlQ)
+            local controlTxQueueExtra = dev:getTxQueue(3)
+            controlTxQueue:setRate(1000)
+            lm.startTask("dataSenderTask", wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQueue, controlTxQueueExtra)
+        else
+            for i = 1, args.cores do
+                lm.startTask("dumper", dev:getRxQueue(i - 1), args, i)
+            end
+        end
     end
     
     lm.waitForTasks()
 end
 
 function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQueue,
-			controlTxQueueExtra, b)
+			controlTxQueueExtra)
    -- this thread sends and receives control packets
 
    local control_rx_bufs = memory.bufArray()
@@ -133,7 +145,6 @@ function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQu
 
    local last_lm_time = lm.getTime()
    local start_time = last_lm_time + 1
-   b:wait()
    while lm.running() do 
       -- check if Ctrl+c was pressed
       -- this actually allocates some buffers from 
@@ -155,5 +166,48 @@ function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQu
       perc.reflectCtrlPkts(num_ctrl_rcvd, control_rx_bufs, controlTxQueueExtra, start_time, wl)
    end
 
+end
+
+function dumper(queue, args, threadId)
+    local snapLen = args.snapLen
+    local writer
+    local captureCtr, filterCtr
+    if args.file then
+        if args.cores > 1 then
+            if args.file:match("%.pcap$") then
+                args.file = args.file:gsub("%.pcap$", "")
+            end
+            args.file = args.file .. "-thread-" .. threadId .. ".pcap"
+        else
+            if not args.file:match("%.pcap$") then
+                args.file = args.file .. ".pcap"
+            end
+        end
+        writer = pcap:newWriter(args.file)
+        captureCtr = stats:newPktRxCounter("Capture, thread #" .. threadId)
+    end
+    local bufs = memory.bufArray()
+    while lm.running() do
+        local rx = queue:tryRecv(bufs, 100)
+        local batchTime = lm.getTime()
+        for i = 1, rx do
+            local buf = bufs[i]
+            if writer then
+                writer:writeBuf(batchTime, buf, snapLen)
+                captureCtr:countPacket(buf)
+            else
+                buf:dump()
+            end
+            buf:free()
+        end
+        if writer then
+            captureCtr:update()
+        end
+    end
+    if writer then
+        captureCtr:finalize()
+        log:info("Flushing buffers, this can take a while...")
+        writer:close()
+    end
 end
 
