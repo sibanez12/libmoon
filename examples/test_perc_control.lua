@@ -51,8 +51,8 @@ local timing_wheel = require"timing_wheel"
 function configure(parser)
     parser:description("Edit the source to modify constants like IPs and ports.")
     parser:argument("dev", "Devices to use."):args("+"):convert(tonumber)
-    parser:option("-d --dstMac", "Destination MAC address to use for the flows to start up"):args(1):convert(tonumber):default(0x081111111108)
-    parser:option("-s --srcMac", "Source MAC address to use for the flows"):args(1):convert(tonumber):default(0x082222222208)
+    parser:option("-d --dstMac", "Destination MAC address to use for the flows to start up"):default("08:11:11:11:11:08")
+    parser:option("-s --srcMac", "Source MAC address to use for the flows"):default("08:22:22:22:22:08")
     parser:option("-n --numFlows", "The number of flows to start up"):args(1):convert(tonumber):default(3)
     parser:option("-t --time", "The amount of time for which to send pkts for the flows (sec)"):args(1):convert(tonumber):default(0.01)
     parser:option("-o --offset", "The offset to use to compute flowID values (must be greater than 0)"):args(1):convert(tonumber):default(1)
@@ -64,6 +64,8 @@ function configure(parser)
 end
 
 function master(args,...)
+    log:info("using dst mac = %s", args.dstMac)
+--    log:info("using dst mac = %x", tonumber(args.dstMac))
     for i, dev in ipairs(args.dev) do
        local dvc
        if i == 1 then
@@ -122,14 +124,12 @@ function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQu
    -- this thread sends and receives control packets
 
    local control_rx_bufs = memory.bufArray()
-   local src_mac = wl.src_mac
 
-   log:info("Starting tx slave at : %x", src_mac)
    -- memory pool with default values for all packets,
    -- this is our archetype
 
    -- for sending new control packets
-   local control_mempool = perc.createCtrlMemPool(src_mac)
+   local control_mempool = perc.createCtrlMemPool()
    local control_bufs = control_mempool:bufArray(CONTROL_BATCH_SIZE)
 
    -- initialize all the flows to start at the same time
@@ -161,9 +161,9 @@ function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQu
          init_ctrl_pkts_sent = 1
       end
 
-      -- reflect control packets
-      local num_ctrl_rcvd = controlRxQueue:tryRecv(control_rx_bufs, CONTROL_RX_WAIT)
-      perc.reflectCtrlPkts(num_ctrl_rcvd, control_rx_bufs, controlTxQueueExtra, start_time, wl)
+--      -- reflect control packets
+--      local num_ctrl_rcvd = controlRxQueue:tryRecv(control_rx_bufs, CONTROL_RX_WAIT)
+--      perc.reflectCtrlPkts(num_ctrl_rcvd, control_rx_bufs, controlTxQueueExtra, start_time, wl)
    end
 
 end

@@ -13,6 +13,8 @@ local perc = {}
 local RUN_INDEX = 42
 local CONTROL_PACKET_LEN = 78
 
+local MAC_DEFAULT = 0x081122334408
+
 function perc.genEmptyWorkload()
     wl = {}
     wl["wait_time"] = 0
@@ -24,14 +26,14 @@ function perc.genEmptyWorkload()
     return wl
 end
 
-function perc.genWorkload(dstMacNo, srcMacNo, numFlows, duration, flowID_offset, wait_time)
+function perc.genWorkload(dstMac, srcMac, numFlows, duration, flowID_offset, wait_time)
     wl = {}
     -- 0000:01:00.0 / eth2 is plugged into nf1
     -- 0000:01:00.1 / eth3 is plugged into nf0
     wl["wait_time"] = wait_time
     wl["num_flows"] = numFlows
-    wl["src_mac"] = srcMacNo
-    wl["dst_mac"] = dstMacNo
+    wl["src_mac"] = srcMac
+    wl["dst_mac"] = dstMac
     wl["duration"] = duration
     wl["flow_id"] = {}
     for i=0,numFlows-1 do
@@ -40,12 +42,12 @@ function perc.genWorkload(dstMacNo, srcMacNo, numFlows, duration, flowID_offset,
     return wl
 end
 
-function perc.createCtrlMemPool(src_mac)
+function perc.createCtrlMemPool()
     return memory.createMemPool(function(buf)
          buf:getPerccPacket():fill{
             -- fields not explicitly set here are initialized to reasonable defaults
-            ethSrc = src_mac, -- MAC of the tx device
-            ethDst = src_mac,
+            ethSrc = MAC_DEFAULT, -- MAC of the tx device
+            ethDst = MAC_DEFAULT,
             ethType = eth.TYPE_PERC,
             perccflowID = 0x1,
             perccleave = 0,
@@ -74,14 +76,16 @@ function perc.sendInitCtrlPkts(control_bufs, control_tw, wl, controlTxQueue)
        if tableContains(wl.flow_id, flow_id) then
           -- is a valid ctrl pkt to send
           local dst_mac = wl.dst_mac
-          pkt.eth:setDst(dst_mac) -- routing
+          local src_mac = wl.src_mac
+          pkt.eth:setDstString(dst_mac) -- routing
+          pkt.eth:setSrcString(src_mac) 
           pkt.eth:setType(eth.TYPE_PERC)
           pkt.percc:setflowID(flow_id) -- identifier
           pkt.percc:setlabel_0(percc.NEW_FLOW)
        else
           -- is an invalid ctrl pkt
-          pkt.eth:setSrc(wl.srcMac) -- so packet is dropped by switch
-          pkt.eth:setDst(wl.srcMac)
+          pkt.eth:setSrcString(wl.src_mac) -- so packet is dropped by switch
+          pkt.eth:setDstString(wl.src_mac)
           pkt.percc:setlabel_0(percc.INACTIVE)
           buf:free() -- do these need to be freed here?
        end
