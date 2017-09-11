@@ -161,9 +161,9 @@ function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQu
          init_ctrl_pkts_sent = 1
       end
 
---      -- reflect control packets
---      local num_ctrl_rcvd = controlRxQueue:tryRecv(control_rx_bufs, CONTROL_RX_WAIT)
---      perc.reflectCtrlPkts(num_ctrl_rcvd, control_rx_bufs, controlTxQueueExtra, start_time, wl)
+      -- reflect control packets
+      local num_ctrl_rcvd = controlRxQueue:tryRecv(control_rx_bufs, CONTROL_RX_WAIT)
+      perc.reflectCtrlPkts(num_ctrl_rcvd, control_rx_bufs, controlTxQueueExtra, start_time, wl)
    end
 
 end
