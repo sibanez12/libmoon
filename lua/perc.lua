@@ -99,11 +99,15 @@ function perc.sendInitCtrlPkts(control_bufs, control_tw, wl, controlTxQueue)
           pkt.eth:setType(eth.TYPE_PERC)
           pkt.percc:setflowID(flow_id) -- identifier
           pkt.percc:setlabel_0(percc.NEW_FLOW)
+          pkt.percc:setlabel_1(percc.NEW_FLOW)
+          pkt.percc:setlabel_2(percc.NEW_FLOW)
        else
           -- is an invalid ctrl pkt
           pkt.eth:setSrc(0) -- so packet is dropped by switch
           pkt.eth:setDst(0)
           pkt.percc:setlabel_0(percc.INACTIVE)
+          pkt.percc:setlabel_1(percc.INACTIVE)
+          pkt.percc:setlabel_2(percc.INACTIVE)
           buf:free() -- do these need to be freed here?
        end
     end
