@@ -21,7 +21,7 @@ function perc.genEmptyWorkload()
     wl["wait_time"] = 0
     wl["num_flows"] = 0
     wl["src_mac"] = 0
-    wl["dst_mac"] = {}
+    wl["dst_mac"] = 0
     wl["duration"] = {}
     wl["flow_id"] = {}
     return wl
@@ -94,15 +94,15 @@ function perc.sendInitCtrlPkts(control_bufs, control_tw, wl, controlTxQueue)
           -- is a valid ctrl pkt to send
           local dst_mac = wl.dst_mac
           local src_mac = wl.src_mac
-          pkt.eth:setDstString(dst_mac) -- routing
-          pkt.eth:setSrcString(src_mac) 
+          pkt.eth:setDst(dst_mac) -- routing
+          pkt.eth:setSrc(src_mac) 
           pkt.eth:setType(eth.TYPE_PERC)
           pkt.percc:setflowID(flow_id) -- identifier
           pkt.percc:setlabel_0(percc.NEW_FLOW)
        else
           -- is an invalid ctrl pkt
-          pkt.eth:setSrcString(wl.src_mac) -- so packet is dropped by switch
-          pkt.eth:setDstString(wl.src_mac)
+          pkt.eth:setSrc(wl.src_mac) -- so packet is dropped by switch
+          pkt.eth:setDst(wl.src_mac)
           pkt.percc:setlabel_0(percc.INACTIVE)
           buf:free() -- do these need to be freed here?
        end
@@ -110,13 +110,20 @@ function perc.sendInitCtrlPkts(control_bufs, control_tw, wl, controlTxQueue)
     controlTxQueue:sendN(control_bufs, wl.num_flows)
 end
 
-function perc.reflectCtrlPkts(num_ctrl_rcvd, control_rx_bufs, controlTxQueueExtra, start_time, wl)
+function perc.reflectCtrlPkts(num_ctrl_rcvd, control_rx_bufs, controlTxQueueExtra, start_time, wl, data_ipg, data_tw)
     for i = 1, num_ctrl_rcvd do
        local pkt = control_rx_bufs[i]:getPerccPacket()
        local flow_id = pkt.percc:getflowID()
        local leave = 0
        if tableContains(wl.flow_id, flow_id) then
           -- this is a ctrl pkt for one of our flows
+          local new_rate = pkt.percc:getdemand()
+          local new_gap = math.floor(2147483648.0/new_rate)
+          local old_gap = data_ipg[flow_id]
+          if old_gap == nil then
+              data_tw:insert(flow_id, 1) -- first time flow_id is inserted into timing_wheel
+          end
+          data_ipg[flow_id] = new_gap
           if lm.getTime() >= start_time + wl.wait_time + wl.duration then
               -- flow should end now. Send a leave pkt 
               leave = 1
@@ -133,6 +140,35 @@ function perc.reflectCtrlPkts(num_ctrl_rcvd, control_rx_bufs, controlTxQueueExtr
     controlTxQueueExtra:sendN(control_rx_bufs, num_ctrl_rcvd)
 end
 
+function perc.sendDataPkts(data_bufs, dataTxQueue, wl, flow_seqNo, data_tw, data_ipg, start_time)
+    data_bufs:alloc(DATA_PKT_LEN)
+    for i, data_buf in ipairs(data_bufs) do
+        -- here we get next flow on timing wheel
+        -- and re-insert it after
+        local pkt = data_buf:getPercdPacket()
+        local flow_id = data_tw:remove_and_tick()
+        if tableContains(wl.flow_id, flow_id) then
+            -- is a valid flow_id
+            local dst_mac = wl.dst_mac
+            local src_mac = wl.src_mac
+            local seqNo = flow_seqNo[flow_id]
+            pkt.eth:setDst(dst_mac)
+            pkt.eth:setSrc(src_mac)
+            pkt.percd:setflowID(flow_id) -- identifier
+            pkt.percd:setseqNo(seqNo) -- identifier
+            flow_seqNo[flow_id] = flow_seqNo[flow_id] + DATA_PKT_LEN
+            local gap = data_ipg[flow_id]
+            if lm.getTime() < start_time + wl.wait_time + wl.duration and gap ~= nil then
+                data_tw:insert(flow_id, gap)
+            end
+        else
+           -- is an invalid flow_id (drop the pkt)
+           pkt.eth:setDst(0)
+           pkt.eth:setSrc(0)
+        end
+    end
+    dataTxQueue:send(data_bufs)
+end
 
 ----------------------
 -- helper functions --

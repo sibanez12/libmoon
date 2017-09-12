@@ -1,5 +1,6 @@
 --- A simple TCP packet generator
 local lm     = require "libmoon"
+local utils  = require "utils"
 local device = require "device"
 local stats  = require "stats"
 local log    = require "log"
@@ -25,7 +26,7 @@ nf_macno_map["nf3"] = 9089296122888 -- "08:44:44:44:44:08"
 -- percd: ether/ 5B Perc Generic/ 12B Perc Data
 -- perc: ether/ 5B Generic/ 56B Perc Control
 
-local PKT_LEN   = 1460 --60
+local DATA_PKT_LEN   = 1460 --60
 local ACK_LEN   = 60
 --local CONTROL_PACKET_LEN = 78 
 
@@ -38,7 +39,7 @@ local CONTROL_RX_WAIT = 0
 local ACK_RX_WAIT = 0
 
 local MAX_FLOWS     = 24
-local INIT_GAP = 0
+local INIT_GAP = 9
 local TIMING_WHEEL_NUM_SLOTS = 100
 
 local  array32       = require "array32"
@@ -64,7 +65,8 @@ function configure(parser)
 end
 
 function master(args,...)
-    log:info("using dst mac = %s", args.dstMac)
+    local dst_mac = parseMacAddress(args.dstMac, true)
+    log:info("using dst mac = %x", dst_mac)
 --    log:info("using dst mac = %x", tonumber(args.dstMac))
     for i, dev in ipairs(args.dev) do
        local dvc
@@ -98,7 +100,9 @@ function master(args,...)
     -- configure tx rates and start transmit slaves
     for i, dev in ipairs(args.dev) do
         if i == 1 then
-            local wl = perc.genWorkload(args.dstMac, args.srcMac, args.numFlows, args.time, args.offset, args.wait)
+            local dst_mac = parseMacAddress(args.dstMac, true)
+            local src_mac = parseMacAddress(args.srcMac, true)
+            local wl = perc.genWorkload(dst_mac, src_mac, args.numFlows, args.time, args.offset, args.wait)
             local dataTxQueue = dev:getTxQueue(dataQ)	 
             dataTxQueue:setRate(8000)
             local ackRxQueue = dev:getRxQueue(ackQ)
@@ -130,45 +134,24 @@ function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQu
    local data_mempool = perc.createDataMemPool()
    local data_bufs = data_mempool:bufArray(DATA_BATCH_SIZE)
 
-   -- initialize inter packet gap table
    local data_ipg = {}
-   for i, flow_id in ipairs(wl.flow_id) do
-       data_ipg[flow_id] = INIT_GAP
-   end  
-
-   -- initialize timing wheel
+   local flow_seqNo = {}
    local data_tw = timing_wheel:new(TIMING_WHEEL_NUM_SLOTS)
    for i, flow_id in ipairs(wl.flow_id) do
+       -- initialize inter packet gap table
+       data_ipg[flow_id] = INIT_GAP
+       -- initialize seqNos
+       flow_seqNo[flow_id] = 0
+       -- initialize timing wheel
        data_tw:insert(flow_id, i-1)
-   end
+   end  
 
    log:info("dataSender about to start %d flows", wl.num_flows)
 
    local last_lm_time = lm.getTime()
    local start_time = last_lm_time + 1
    while lm.running() do 
-       data_bufs:alloc(PKT_LEN)
-       for i, data_buf in ipairs(data_bufs) do
-           -- here we get next flow on timing wheel
-           -- and re-insert it after
-           local pkt = data_buf:getPercdPacket()
-           local flow_id = data_tw:remove_and_tick()
-           if tableContains(wl.flow_id, flow_id) then
-               -- is a valid flow_id
-               local dst_mac = wl.dst_mac
-               local src_mac = wl.src_mac
-               pkt.eth:setDstString(dst_mac)
-               pkt.eth:setSrcString(src_mac)
-               pkt.percd:setflowID(flow_id) -- identifier
-               local gap = data_ipg[flow_id] 
-               data_tw:insert(flow_id, gap)
-           else
-              -- is an invalid flow_id (drop the pkt)
-              pkt.eth:setDst(0)
-              pkt.eth:setSrc(0)
-           end
-       end
-       dataTxQueue:send(data_bufs)
+       perc.sendDataPkts(data_bufs, dataTxQueue, wl, flow_seqNo, data_tw, data_ipg)
    end
 
 end
