@@ -101,8 +101,8 @@ function perc.sendInitCtrlPkts(control_bufs, control_tw, wl, controlTxQueue)
           pkt.percc:setlabel_0(percc.NEW_FLOW)
        else
           -- is an invalid ctrl pkt
-          pkt.eth:setSrc(wl.src_mac) -- so packet is dropped by switch
-          pkt.eth:setDst(wl.src_mac)
+          pkt.eth:setSrc(0) -- so packet is dropped by switch
+          pkt.eth:setDst(0)
           pkt.percc:setlabel_0(percc.INACTIVE)
           buf:free() -- do these need to be freed here?
        end
