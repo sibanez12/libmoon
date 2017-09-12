@@ -17,6 +17,7 @@
 -- if the packet has a checksum, adapt createStack (loop at end of function) and packetCalculateChecksums
 -- - proto/proto.lua: add percc.lua to the list so it gets loaded
 --]]
+require "utils"
 local ffi = require "ffi"
 require "proto.template"
 local initHeader = initHeader
@@ -182,7 +183,7 @@ end
 --- Retrieve the demand.
 --- @return demand as 32 bit integer.
 function perccHeader:getdemand()
-	return bswap(self.demand)
+	return bit.band(bswap(self.demand), 0xFFFFFFFFULL)
 end
 
 --- Retrieve the demand as string.
