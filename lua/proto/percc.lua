@@ -183,7 +183,7 @@ end
 --- Retrieve the demand.
 --- @return demand as 32 bit integer.
 function perccHeader:getdemand()
-	return bit.band(bswap(self.demand), 0xFFFFFFFFULL)
+	return tonumber(bit.band(bswap(self.demand), 0xFFFFFFFFULL))
 end
 
 --- Retrieve the demand as string.

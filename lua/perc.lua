@@ -149,7 +149,6 @@ function perc.sendDataPkts(data_bufs, dataTxQueue, wl, flow_seqNo, data_tw, data
         local flow_id = data_tw:remove_and_tick()
         if tableContains(wl.flow_id, flow_id) then
             -- is a valid flow_id
-            log:info("valid flow_id in data_tw: %d", flow_id)
             local dst_mac = wl.dst_mac
             local src_mac = wl.src_mac
             local seqNo = flow_seqNo[flow_id]
@@ -160,7 +159,6 @@ function perc.sendDataPkts(data_bufs, dataTxQueue, wl, flow_seqNo, data_tw, data
             flow_seqNo[flow_id] = flow_seqNo[flow_id] + DATA_PKT_LEN
             local gap = data_ipg[flow_id]
             if lm.getTime() < start_time + wl.wait_time + wl.duration and gap ~= nil then
-                log:info("reinserting flow_id (%d) into timing wheel. gap = %d", flow_id, gap)
                 data_tw:insert(flow_id, gap)
             end
         else
