@@ -1,5 +1,6 @@
 --- A simple TCP packet generator
 local lm     = require "libmoon"
+local utils  = require "utils"
 local device = require "device"
 local stats  = require "stats"
 local log    = require "log"
@@ -61,7 +62,8 @@ function configure(parser)
 end
 
 function master(args,...)
-    log:info("using dst mac = %s", args.dstMac)
+    local dmac = parseMacAddress(args.dstMac, true)
+    log:info("using dst mac = %x", dmac)
 --    log:info("using dst mac = %x", tonumber(args.dstMac))
     for i, dev in ipairs(args.dev) do
        local dvc
@@ -95,7 +97,9 @@ function master(args,...)
     -- configure tx rates and start transmit slaves
     for i, dev in ipairs(args.dev) do
         if i == 1 then
-            local wl = perc.genWorkload(args.dstMac, args.srcMac, args.numFlows, args.time, args.offset, args.wait)
+            local dst_mac = parseMacAddress(args.dstMac, true)
+            local src_mac = parseMacAddress(args.srcMac, true)
+            local wl = perc.genWorkload(dst_mac, src_mac, args.numFlows, args.time, args.offset, args.wait)
             local dataTxQueue = dev:getTxQueue(dataQ)	 
             dataTxQueue:setRate(8000)
             local ackRxQueue = dev:getRxQueue(ackQ)
