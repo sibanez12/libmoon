@@ -10,6 +10,7 @@ local timing_wheel = require "timing_wheel"
 
 local perc = {}
 
+local DATA_PKT_LEN = 1460
 local RUN_INDEX = 42
 local CONTROL_PACKET_LEN = 78
 
@@ -67,6 +68,22 @@ function perc.createCtrlMemPool()
         }
         end)
 end
+
+function perc.createDataMemPool()
+    return memory.createMemPool(function(buf)
+         buf:getPercdPacket():fill{
+            ethSrc = MAC_DEFAULT,
+            ethDst = MAC_DEFAULT,
+            ethType = eth.TYPE_PERC_DATA,
+            percdflowID = 0x0,
+            percdindex = 0,
+            percdseqNo = 0x0,
+            percdackNo = 0x0,
+            pktLength = DATA_PKT_LEN
+                                }
+   end)
+end
+
 
 function perc.sendInitCtrlPkts(control_bufs, control_tw, wl, controlTxQueue)
     control_bufs:alloc(CONTROL_PACKET_LEN)
