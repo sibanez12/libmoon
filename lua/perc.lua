@@ -1,4 +1,5 @@
 local lm     = require "libmoon"
+local utils = require "utils"
 local log    = require "log"
 local memory = require "memory"
 local eth = require "proto.ethernet"
@@ -128,7 +129,7 @@ function perc.reflectCtrlPkts(num_ctrl_rcvd, control_rx_bufs, controlTxQueueExtr
               data_tw:insert(flow_id, 1) -- first time flow_id is inserted into timing_wheel
           end
           data_ipg[flow_id] = new_gap
-          if lm.getTime() >= start_time + wl.wait_time + wl.duration then
+          if start_time ~= nil and getRealTime() >= start_time + wl.duration then
               -- flow should end now. Send a leave pkt 
               leave = 1
           end
@@ -162,7 +163,7 @@ function perc.sendDataPkts(data_bufs, dataTxQueue, wl, flow_seqNo, data_tw, data
             pkt.percd:setseqNo(seqNo) -- identifier
             flow_seqNo[flow_id] = flow_seqNo[flow_id] + DATA_PKT_LEN
             local gap = data_ipg[flow_id]
-            if lm.getTime() < start_time + wl.wait_time + wl.duration and gap ~= nil then
+            if start_time ~= nil and getRealTime() < start_time + wl.duration and gap ~= nil then
                 data_tw:insert(flow_id, gap)
             end
         else

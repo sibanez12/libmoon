@@ -26,6 +26,7 @@ nf_macno_map["nf3"] = 9089296122888 -- "08:44:44:44:44:08"
 -- percd: ether/ 5B Perc Generic/ 12B Perc Data
 -- perc: ether/ 5B Generic/ 56B Perc Control
 
+local FINISH_UP_TIME = 2  -- seconds
 
 local DATA_BATCH_SIZE = 63
 local CONTROL_BATCH_SIZE = 31
@@ -54,7 +55,7 @@ function configure(parser)
     parser:option("-n --numFlows", "The number of flows to start up"):args(1):convert(tonumber):default(3)
     parser:option("-t --time", "The amount of time for which to send pkts for the flows (sec)"):args(1):convert(tonumber):default(0.01)
     parser:option("-o --offset", "The offset to use to compute flowID values (must be greater than 0)"):args(1):convert(tonumber):default(1)
-    parser:option("-w --wait", "Wait this many seconds before sending init ctrl pkts"):args(1):convert(tonumber):default(3)
+    parser:option("-w --wait", "Wait until the system clock is at this time before starting flows"):args(1):convert(tonumber):default(0)
     parser:option("-f --file", "File to write logged packets into."):default("log.pcap")
     parser:option("-l --snap-len", "Truncate packets to this size."):convert(tonumber):target("snapLen"):default(2048)
     parser:option("-c --cores", "Number of threads to use for logging / writing pcap traces.."):convert(tonumber):default(1)
@@ -62,6 +63,8 @@ function configure(parser)
 end
 
 function master(args,...)
+    log:info("Current time is %f, will start flows at %f", getRealTime(), args.wait)
+
     local dmac = parseMacAddress(args.dstMac, true)
     log:info("using dst mac = %x", dmac)
 --    log:info("using dst mac = %x", tonumber(args.dstMac))
@@ -94,6 +97,9 @@ function master(args,...)
     local controlQ = 1
     local ackQ = 2
 
+    local t1 = false
+    local t2 = false
+
     -- configure tx rates and start transmit slaves
     for i, dev in ipairs(args.dev) do
         if i == 1 then
@@ -118,6 +124,7 @@ function master(args,...)
     end
     
     lm.waitForTasks()
+    log:info("master -- complete.")
 end
 
 function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQueue,
@@ -146,18 +153,14 @@ function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQu
    local flow_seqNo = {}
    local data_tw = timing_wheel:new(TIMING_WHEEL_NUM_SLOTS)
    for i, flow_id in ipairs(wl.flow_id) do
-       -- initialize inter packet gap table
---       data_ipg[flow_id] = INIT_GAP
        -- initialize seqNos
        flow_seqNo[flow_id] = 0
    end
 
    init_ctrl_pkts_sent = 0
    log:info("dataSender about to start %d flows", wl.num_flows)
-
-   local last_lm_time = lm.getTime()
-   local start_time = last_lm_time + 1
-   while lm.running() do 
+   local start_time = nil
+   while lm.running() and getRealTime() < wl.wait_time + wl.duration + FINISH_UP_TIME do 
       -- check if Ctrl+c was pressed
       -- this actually allocates some buffers from 
       -- the mempool the array is associated with
@@ -167,8 +170,9 @@ function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQu
 
       -- send first control packets if there are
       -- flows waiting to start
-      -- maybe also add a condition to check control_tw if num_pending_fin
-      if lm.getTime() > start_time + wl.wait_time and init_ctrl_pkts_sent == 0 then
+      local cur_time = getRealTime()
+      if cur_time >= wl.wait_time and init_ctrl_pkts_sent == 0 then
+         start_time = cur_time 
          perc.sendInitCtrlPkts(control_bufs, control_tw, wl, controlTxQueue)
          init_ctrl_pkts_sent = 1
       end
@@ -179,7 +183,7 @@ function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQu
 
       perc.sendDataPkts(data_bufs, dataTxQueue, wl, flow_seqNo, data_tw, data_ipg, start_time)
    end
-
+   log:info("dataSender task -- complete.")
 end
 
 function dumper(queue, args, threadId)
@@ -201,7 +205,7 @@ function dumper(queue, args, threadId)
         captureCtr = stats:newPktRxCounter("Capture, thread #" .. threadId)
     end
     local bufs = memory.bufArray()
-    while lm.running() do
+    while lm.running() and getRealTime() < args.wait + args.time + FINISH_UP_TIME do
         local rx = queue:tryRecv(bufs, 100)
         local batchTime = lm.getTime()
         for i = 1, rx do
@@ -218,10 +222,12 @@ function dumper(queue, args, threadId)
             captureCtr:update()
         end
     end
+    log:info("dumper thread %d -- finishing up ...", threadId)
     if writer then
         captureCtr:finalize()
         log:info("Flushing buffers, this can take a while...")
         writer:close()
     end
+    log:info("dumper thread %d -- complete", threadId)
 end
 
