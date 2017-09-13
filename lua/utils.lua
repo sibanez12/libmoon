@@ -139,6 +139,14 @@ do
 		ffi.C.clock_gettime(1, ts)
 		return tonumber(ts.tv_sec) + tonumber(ts.tv_nsec) / 10^9
 	end
+
+	--- Return the current monotonic clock time
+	--- @return The time in seconds (as a double)
+	function getRealTime()
+		-- CLOCK_REALTIME = 0
+		ffi.C.clock_gettime(0, ts)
+		return tonumber(ts.tv_sec) + tonumber(ts.tv_nsec) / 10^9
+	end
 end
 
 --- Subtract timeval values
