@@ -27,6 +27,7 @@ nf_macno_map["nf3"] = 9089296122888 -- "08:44:44:44:44:08"
 -- perc: ether/ 5B Generic/ 56B Perc Control
 
 local FINISH_UP_TIME = 2  -- seconds
+local RUN_TIME = 100      -- seconds
 
 local DATA_BATCH_SIZE = 63
 local CONTROL_BATCH_SIZE = 31
@@ -50,10 +51,10 @@ local timing_wheel = require"timing_wheel"
 function configure(parser)
     parser:description("Edit the source to modify constants like IPs and ports.")
     parser:argument("dev", "Devices to use."):args("+"):convert(tonumber)
-    parser:option("-d --dstMac", "Destination MAC address to use for the flows to start up"):default("08:11:11:11:11:08")
+    parser:option("-d --dstMac", "Destination MAC address to use for the flows to start up"):args("+"):default("08:11:11:11:11:08")
     parser:option("-s --srcMac", "Source MAC address to use for the flows"):default("08:22:22:22:22:08")
-    parser:option("-n --numFlows", "The number of flows to start up"):args(1):convert(tonumber):default(3)
-    parser:option("-t --time", "The amount of time for which to send pkts for the flows (sec)"):args(1):convert(tonumber):default(0.01)
+    parser:option("-n --numFlows", "The number of flows to start up"):args("+"):convert(tonumber):default("0")
+    parser:option("-t --time", "The amount of time for which to send pkts for the flows (sec)"):args("+"):convert(tonumber):default("0.01")
     parser:option("-o --offset", "The offset to use to compute flowID values (must be greater than 0)"):args(1):convert(tonumber):default(1)
     parser:option("-w --wait", "Wait until the system clock is at this time before starting flows"):args(1):convert(tonumber):default(0)
     parser:option("-f --file", "File to write logged packets into."):default("log.pcap")
@@ -63,11 +64,6 @@ function configure(parser)
 end
 
 function master(args,...)
-    log:info("Current time is %f, will start flows at %f", getRealTime(), args.wait)
-
-    local dmac = parseMacAddress(args.dstMac, true)
-    log:info("using dst mac = %x", dmac)
---    log:info("using dst mac = %x", tonumber(args.dstMac))
     for i, dev in ipairs(args.dev) do
        local dvc
        if i == 1 then
@@ -103,9 +99,9 @@ function master(args,...)
     -- configure tx rates and start transmit slaves
     for i, dev in ipairs(args.dev) do
         if i == 1 then
-            local dst_mac = parseMacAddress(args.dstMac, true)
             local src_mac = parseMacAddress(args.srcMac, true)
-            local wl = perc.genWorkload(dst_mac, src_mac, args.numFlows, args.time, args.offset, args.wait)
+            local wl = perc.genWorkload(args.dstMac, src_mac, args.numFlows, args.time, args.offset, args.wait)
+            perc.print_wl(wl)
             local dataTxQueue = dev:getTxQueue(dataQ)	 
             dataTxQueue:setRate(8000)
             local ackRxQueue = dev:getRxQueue(ackQ)
@@ -160,7 +156,7 @@ function dataSenderTask(wl, dataTxQueue, ackRxQueue, controlTxQueue, controlRxQu
    init_ctrl_pkts_sent = 0
    log:info("dataSender about to start %d flows", wl.num_flows)
    local start_time = nil
-   while lm.running() and getRealTime() < wl.wait_time + wl.duration + FINISH_UP_TIME do 
+   while lm.running() and getRealTime() < wl.wait_time + RUN_TIME + FINISH_UP_TIME do 
       -- check if Ctrl+c was pressed
       -- this actually allocates some buffers from 
       -- the mempool the array is associated with
@@ -205,7 +201,7 @@ function dumper(queue, args, threadId)
         captureCtr = stats:newPktRxCounter("Capture, thread #" .. threadId)
     end
     local bufs = memory.bufArray()
-    while lm.running() and getRealTime() < args.wait + args.time + FINISH_UP_TIME do
+    while lm.running() and getRealTime() < args.wait + RUN_TIME + FINISH_UP_TIME do
         local rx = queue:tryRecv(bufs, 100)
         local batchTime = lm.getTime()
         for i = 1, rx do

@@ -17,31 +17,58 @@ local CONTROL_PACKET_LEN = 78
 
 local MAC_DEFAULT = 0x081122334408
 
-function perc.genEmptyWorkload()
-    wl = {}
-    wl["wait_time"] = 0
-    wl["num_flows"] = 0
-    wl["src_mac"] = 0
-    wl["dst_mac"] = 0
-    wl["duration"] = {}
-    wl["flow_id"] = {}
-    return wl
-end
+-- function perc.genEmptyWorkload()
+--     wl = {}
+--     wl["wait_time"] = 0
+--     wl["num_flows"] = 0
+--     wl["src_mac"] = 0
+--     wl["dst_mac"] = 0
+--     wl["duration"] = {}
+--     wl["flow_id"] = {}
+--     return wl
+-- end
 
 function perc.genWorkload(dstMac, srcMac, numFlows, duration, flowID_offset, wait_time)
     wl = {}
     -- 0000:01:00.0 / eth2 is plugged into nf1
     -- 0000:01:00.1 / eth3 is plugged into nf0
     wl["wait_time"] = wait_time
-    wl["num_flows"] = numFlows
+    wl["num_flows"] = 0 -- temp
     wl["src_mac"] = srcMac
-    wl["dst_mac"] = dstMac
-    wl["duration"] = duration
+    wl["dst_mac"] = {}
+    wl["duration"] = {}
     wl["flow_id"] = {}
-    for i=0,numFlows-1 do
-       table.insert(wl.flow_id, (flowID_offset + i))
+
+    -- compute the total number of flows from this host
+    local totalNumFlows = 0
+    for i, n in ipairs(numFlows) do
+        totalNumFlows = totalNumFlows + n
     end
+    wl["num_flows"] = totalNumFlows
+
+    local ind = 1
+    for i=0,totalNumFlows-1 do
+       local flow_id = flowID_offset + i
+       table.insert(wl.flow_id, flow_id)
+       if i+1 > numFlows[ind] then
+           ind = ind + 1
+       end
+       wl.dst_mac[flow_id] = parseMacAddress(dstMac[ind], true)
+       wl.duration[flow_id] = duration[ind]
+    end
+
     return wl
+end
+
+function perc.print_wl(wl)
+    log:info("wl.num_flows = %d", wl.num_flows)
+    log:info("wl.src_mac = %x", wl.src_mac)
+    log:info("wl.wait_time = %f", wl.wait_time)
+    for i, flow_id in ipairs(wl.flow_id) do
+        log:info("flow %d:", flow_id)
+        log:info("\twl.dst_mac[%d] = %x", flow_id, wl.dst_mac[flow_id])
+        log:info("\twl.duration[%d] = %f", flow_id, wl.duration[flow_id])
+    end
 end
 
 function perc.createCtrlMemPool()
@@ -93,7 +120,7 @@ function perc.sendInitCtrlPkts(control_bufs, control_tw, wl, controlTxQueue)
        local flow_id = control_tw:remove_and_tick()
        if tableContains(wl.flow_id, flow_id) then
           -- is a valid ctrl pkt to send
-          local dst_mac = wl.dst_mac
+          local dst_mac = wl.dst_mac[flow_id]
           local src_mac = wl.src_mac
           pkt.eth:setDst(dst_mac) -- routing
           pkt.eth:setSrc(src_mac) 
@@ -126,10 +153,10 @@ function perc.reflectCtrlPkts(num_ctrl_rcvd, control_rx_bufs, controlTxQueueExtr
           local new_gap = math.floor(2147483648.0/new_rate)
           local old_gap = data_ipg[flow_id]
           if old_gap == nil then
-              data_tw:insert(flow_id, 1) -- first time flow_id is inserted into timing_wheel
+              data_tw:insert(flow_id, 1) -- first time flow_id is inserted into data timing_wheel
           end
           data_ipg[flow_id] = new_gap
-          if start_time ~= nil and getRealTime() >= start_time + wl.duration then
+          if start_time ~= nil and getRealTime() >= start_time + wl.duration[flow_id] then
               -- flow should end now. Send a leave pkt 
               leave = 1
           end
@@ -154,7 +181,7 @@ function perc.sendDataPkts(data_bufs, dataTxQueue, wl, flow_seqNo, data_tw, data
         local flow_id = data_tw:remove_and_tick()
         if tableContains(wl.flow_id, flow_id) then
             -- is a valid flow_id
-            local dst_mac = wl.dst_mac
+            local dst_mac = wl.dst_mac[flow_id]
             local src_mac = wl.src_mac
             local seqNo = flow_seqNo[flow_id]
             pkt.eth:setDst(dst_mac)
@@ -163,7 +190,7 @@ function perc.sendDataPkts(data_bufs, dataTxQueue, wl, flow_seqNo, data_tw, data
             pkt.percd:setseqNo(seqNo) -- identifier
             flow_seqNo[flow_id] = flow_seqNo[flow_id] + DATA_PKT_LEN
             local gap = data_ipg[flow_id]
-            if start_time ~= nil and getRealTime() < start_time + wl.duration and gap ~= nil then
+            if start_time ~= nil and getRealTime() < start_time + wl.duration[flow_id] and gap ~= nil then
                 data_tw:insert(flow_id, gap)
             end
         else
