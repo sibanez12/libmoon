@@ -13,7 +13,7 @@ local perc = {}
 
 local DATA_PKT_LEN = 1460
 local RUN_INDEX = 42
-local CONTROL_PACKET_LEN = 80
+local CONTROL_PACKET_LEN = 83
 
 local MAC_DEFAULT = 0x081122334408
 
