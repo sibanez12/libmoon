@@ -13,7 +13,7 @@ local perc = {}
 
 local DATA_PKT_LEN = 1460
 local RUN_INDEX = 42
-local CONTROL_PACKET_LEN = 78
+local CONTROL_PACKET_LEN = 80
 
 local MAC_DEFAULT = 0x081122334408
 
@@ -91,7 +91,6 @@ function perc.createCtrlMemPool()
             perccalloc_0=0xFFFFFFFF,
             perccalloc_1=0xFFFFFFFF,
             perccalloc_2=0xFFFFFFFF,
-            perccindex = RUN_INDEX,
             pktLength = CONTROL_PACKET_LEN
         }
         end)

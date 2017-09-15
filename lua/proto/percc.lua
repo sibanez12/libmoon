@@ -58,7 +58,8 @@ percc.headerFormat = [[
         uint32_t        numSatAdj;
         uint32_t        newMaxSat;
         uint32_t        R;
-        uint32_t        index;
+        uint64_t        resetTimer;
+        uint8_t         nf_index;
 ]]
 
 --- Variable sized member
@@ -508,23 +509,42 @@ function perccHeader:getRString()
 	return self.R
 end
 
---- Set the index.
---- @param int index of the percc header as 32 bit integer.
-function perccHeader:setindex(int)
+--- Set the resetTimer.
+--- @param int timestamp of the resetTimer of the percc header as 64 bit integer.
+function perccHeader:setresetTimer(int)
 	int = int or 0
-	self.index = bswap(int)
+	self.resetTimer = bswap(int)
 end
 
---- Retrieve the index.
---- @return index as 32 bit integer.
-function perccHeader:getindex()
-	return bswap(self.index)
+--- Retrieve the resetTimer timestamp.
+--- @return resetTimer timestamp as 64 bit integer.
+function perccHeader:getresetTimer()
+	return bswap(self.resetTimer)
 end
 
---- Retrieve the index as string.
---- @return index as string.
-function perccHeader:getindexString()
-	return bswap(self.index)
+--- Retrieve the resetTimer timestamp as string.
+--- @return resetTimer timestamp as string.
+function perccHeader:getresetTimerString()
+	return bswap(self.resetTimer)
+end
+
+--- Set the nf_index.
+--- @param int nf_index of the percc header as 64 bit integer.
+function perccHeader:setnf_index(int)
+	int = int or 0
+	self.nf_index = bswap(int)
+end
+
+--- Retrieve the nf_index.
+--- @return nf_index as 32 bit integer.
+function perccHeader:getnf_index()
+	return bswap(self.nf_index)
+end
+
+--- Retrieve the nf_index as string.
+--- @return nf_index as string.
+function perccHeader:getnf_indexString()
+	return bswap(self.nf_index)
 end
 
 
@@ -560,7 +580,8 @@ function perccHeader:fill(args, pre)
 	self:setnumSatAdj(args[pre .. "numSatAdj"])
 	self:setnewMaxSat(args[pre .. "newMaxSat"])
 	self:setR(args[pre .. "R"])
-	self:setindex(args[pre .. "index"])
+	self:setresetTimer(args[pre .. "resetTimer"])
+	self:setnf_index(args[pre .. "nf_index"])
 end
 
 --- Retrieve the values of all members.
@@ -591,7 +612,8 @@ function perccHeader:get(pre)
 	args[pre .. "numSatAdj"] = self:getnumSatAdj()
 	args[pre .. "newMaxSat"] = self:getnewMaxSat() 
 	args[pre .. "R"] = self:getR() 
-	args[pre .. "index"] = self:getindex() 
+	args[pre .. "resetTimer"] = self:getresetTimer() 
+	args[pre .. "nf_index"] = self:getnf_index() 
 	return args
 end
 
@@ -600,7 +622,7 @@ end
 function perccHeader:getString()
 	return "Perc_control "
 	   .. " flowID " .. self:getflowID()
-	   .. " index " .. self:getindex() 
+	   .. " nf_index " .. self:getnf_index() 
 	   .. " leave " .. self:getleaveString() 
 	   .. " isForward " .. self:getisForward()
 	   .. " hopCnt " .. self:gethopCnt()
