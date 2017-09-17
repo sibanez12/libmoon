@@ -30,14 +30,14 @@ local FINISH_UP_TIME = 2  -- seconds
 local RUN_TIME = 100      -- seconds
 
 local DATA_BATCH_SIZE = 63
-local CONTROL_BATCH_SIZE = 31
+local CONTROL_BATCH_SIZE = 50
 local ACK_BATCH_SIZE = 63
 
 local DATA_RX_WAIT = 10
 local CONTROL_RX_WAIT = 0
 local ACK_RX_WAIT = 0
 
-local MAX_FLOWS     = 24
+local MAX_FLOWS     = 50
 local INIT_GAP = 5
 local TIMING_WHEEL_NUM_SLOTS = 100
 
